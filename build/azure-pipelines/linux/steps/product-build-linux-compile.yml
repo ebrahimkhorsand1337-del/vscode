@@ -169,9 +169,10 @@ steps:
   - script: |
       set -e
       npm run gulp vscode-linux-$(VSCODE_ARCH)-min-ci
-      ARCHIVE_PATH=".build/linux/out/client/code-${{ parameters.VSCODE_QUALITY }}-$(VSCODE_ARCH)-$(date +%s).tar.gz"
+      ARCHIVE_PATH="$(Build.ArtifactStagingDirectory)/out/client/code-${{ parameters.VSCODE_QUALITY }}-$(VSCODE_ARCH)-$(date +%s).tar.gz"
       mkdir -p $(dirname $ARCHIVE_PATH)
       echo "##vso[task.setvariable variable=CLIENT_PATH]$ARCHIVE_PATH"
+      echo "##vso[task.setvariable variable=CLIENT_ARCHIVE_NAME]$(basename $ARCHIVE_PATH)"
     env:
       GITHUB_TOKEN: "$(github-distro-mixin-password)"
     displayName: Build client
@@ -203,7 +204,7 @@ steps:
       set -e
       npm run gulp vscode-reh-linux-$(VSCODE_ARCH)-min-ci
       mv ../vscode-reh-linux-$(VSCODE_ARCH) ../vscode-server-linux-$(VSCODE_ARCH) # TODO@joaomoreno
-      ARCHIVE_PATH=".build/linux/out/server/vscode-server-linux-$(VSCODE_ARCH).tar.gz"
+      ARCHIVE_PATH="$(Build.ArtifactStagingDirectory)/out/server/vscode-server-linux-$(VSCODE_ARCH).tar.gz"
       UNARCHIVE_PATH="`pwd`/../vscode-server-linux-$(VSCODE_ARCH)"
       mkdir -p $(dirname $ARCHIVE_PATH)
       tar --owner=0 --group=0 -czf $ARCHIVE_PATH -C .. vscode-server-linux-$(VSCODE_ARCH)
@@ -217,7 +218,7 @@ steps:
       set -e
       npm run gulp vscode-reh-web-linux-$(VSCODE_ARCH)-min-ci
       mv ../vscode-reh-web-linux-$(VSCODE_ARCH) ../vscode-server-linux-$(VSCODE_ARCH)-web # TODO@joaomoreno
-      ARCHIVE_PATH=".build/linux/out/web/vscode-server-linux-$(VSCODE_ARCH)-web.tar.gz"
+      ARCHIVE_PATH="$(Build.ArtifactStagingDirectory)/out/web/vscode-server-linux-$(VSCODE_ARCH)-web.tar.gz"
       mkdir -p $(dirname $ARCHIVE_PATH)
       tar --owner=0 --group=0 -czf $ARCHIVE_PATH -C .. vscode-server-linux-$(VSCODE_ARCH)-web
       echo "##vso[task.setvariable variable=WEB_PATH]$ARCHIVE_PATH"
@@ -264,14 +265,15 @@ steps:
     - script:  |
         set -e
         npm run gulp "vscode-linux-$(VSCODE_ARCH)-build-deb"
-        mkdir -p .build/linux/out/deb
-        cp .build/linux/deb/*/deb/*.deb .build/linux/out/deb/
-        file_output=$(file $(ls .build/linux/out/deb/*.deb))
+        mkdir -p $(Build.ArtifactStagingDirectory)/out/deb
+        cp .build/linux/deb/*/deb/*.deb $(Build.ArtifactStagingDirectory)/out/deb/
+        file_output=$(file $(ls $(Build.ArtifactStagingDirectory)/out/deb/*.deb))
         if [[ "$file_output" != *"data compression xz"* ]]; then
           echo "Error: unknown compression. $file_output"
           exit 1
         fi
-        echo "##vso[task.setvariable variable=DEB_PATH]$(ls .build/linux/out/deb/*.deb)"
+        echo "##vso[task.setvariable variable=DEB_PATH]$(ls $(Build.ArtifactStagingDirectory)/out/deb/*.deb)"
+        echo "##vso[task.setvariable variable=DEB_PACKAGE_NAME]$(basename $(ls $(Build.ArtifactStagingDirectory)/out/deb/*.deb))"
       displayName: Build deb package
 
     - script:  |
@@ -294,9 +296,10 @@ steps:
     - script:  |
         set -e
         npm run gulp "vscode-linux-$(VSCODE_ARCH)-build-rpm"
-        mkdir -p .build/linux/out/rpm
-        cp .build/linux/rpm/*/*.rpm .build/linux/out/rpm/
-        echo "##vso[task.setvariable variable=RPM_PATH]$(ls .build/linux/out/rpm/*.rpm)"
+        mkdir -p $(Build.ArtifactStagingDirectory)/out/rpm
+        cp .build/linux/rpm/*/*.rpm $(Build.ArtifactStagingDirectory)/out/rpm/
+        echo "##vso[task.setvariable variable=RPM_PATH]$(ls $(Build.ArtifactStagingDirectory)/out/rpm/*.rpm)"
+        echo "##vso[task.setvariable variable=RPM_PACKAGE_NAME]$(basename $(ls $(Build.ArtifactStagingDirectory)/out/rpm/*.rpm))"
       displayName: Build rpm package
 
     - ${{ if eq(parameters.VSCODE_ARCH, 'x64') }}:
@@ -316,14 +319,15 @@ steps:
             SNAP_ROOT="$(pwd)/.build/linux/snap/$(VSCODE_ARCH)"
             SNAP_EXTRACTED_PATH=$(find $SNAP_ROOT -maxdepth 1 -type d -name 'code-*')
 
-            mkdir -p .build/linux/out/snap
-            cp $(find $SNAP_ROOT -maxdepth 1 -type f -name '*.snap') .build/linux/out/snap/
+            mkdir -p $(Build.ArtifactStagingDirectory)/out/snap
+            cp $(find $SNAP_ROOT -maxdepth 1 -type f -name '*.snap') $(Build.ArtifactStagingDirectory)/out/snap/
 
             # SBOM tool doesn't like recursive symlinks
             sudo find $SNAP_EXTRACTED_PATH -type l -delete
 
             echo "##vso[task.setvariable variable=SNAP_EXTRACTED_PATH]$SNAP_EXTRACTED_PATH"
-            echo "##vso[task.setvariable variable=SNAP_PATH]$(ls .build/linux/out/snap/*.snap)"
+            echo "##vso[task.setvariable variable=SNAP_PATH]$(ls $(Build.ArtifactStagingDirectory)/out/snap/*.snap)"
+            echo "##vso[task.setvariable variable=SNAP_PACKAGE_NAME]$(basename $(ls $(Build.ArtifactStagingDirectory)/out/snap/*.snap))"
           env:
             VSCODE_ARCH: $(VSCODE_ARCH)
           displayName: Build snap package
@@ -369,7 +373,3 @@ steps:
     - script: npx deemon --attach node build/azure-pipelines/linux/codesign.js
       condition: succeededOrFailed()
       displayName: "✍️ Post-job: Codesign deb & rpm"
-
-    - script: echo "##vso[task.setvariable variable=ARTIFACT_PREFIX]attempt$(System.JobAttempt)_"
-      condition: and(succeededOrFailed(), notIn(variables['Agent.JobStatus'], 'Succeeded', 'SucceededWithIssues'))
-      displayName: Generate artifact prefix
